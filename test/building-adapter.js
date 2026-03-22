@@ -333,8 +333,10 @@ function getBBox2D(points) {
 function getInscribedBBox(points) {
   const full = getBBox2D(points);
 
-  // For near-rectangular polygons (4 vertices), bbox already matches — skip shrinking
-  if (points.length <= 4) return full;
+  // If polygon nearly fills its bbox (axis-aligned rectangle), no shrinking needed
+  const bboxArea = (full.maxX - full.minX) * (full.maxY - full.minY);
+  const polyArea = computeArea2D(points);
+  if (bboxArea < 1 || polyArea > bboxArea * 0.9) return full;
 
   let { minX, maxX, minY, maxY } = { ...full };
   const eps = 0.1;
@@ -360,9 +362,7 @@ function getInscribedBBox(points) {
     if (allInside) break;
   }
 
-  const origArea = (full.maxX - full.minX) * (full.maxY - full.minY);
-  const newArea = (maxX - minX) * (maxY - minY);
-  if (newArea < origArea * 0.5 || maxX <= minX || maxY <= minY) return full;
+  if (maxX <= minX + 1 || maxY <= minY + 1) return full;
 
   return { minX, maxX, minY, maxY };
 }

@@ -18,7 +18,7 @@ const ROOT = path.resolve(__dirname, '..');
 
 function parseArgs() {
   const args = process.argv.slice(2);
-  const result = { building: null, view: null, pos: null, target: null, out: null };
+  const result = { building: null, view: null, pos: null, target: null, out: null, polygon: null, tags: null };
 
   for (let i = 0; i < args.length; i++) {
     switch (args[i]) {
@@ -27,15 +27,15 @@ function parseArgs() {
       case '--pos': result.pos = args[++i].split(',').map(Number); break;
       case '--target': result.target = args[++i].split(',').map(Number); break;
       case '--out': result.out = args[++i]; break;
+      case '--polygon': result.polygon = JSON.parse(fs.readFileSync(args[++i], 'utf-8')); break;
+      case '--tags': result.tags = JSON.parse(args[++i]); break;
     }
   }
 
-  if (!result.building) {
-    console.error('Usage: node test/snapshot.mjs --building <name> [--view <preset>] [--pos x,y,z --target x,y,z] [--out path.png]');
-    console.error('\nPreset views: front, right, back, left, aerial, top, interior');
-    console.error('\nExamples:');
-    console.error('  node test/snapshot.mjs --building residential-small-rect --view aerial');
-    console.error('  node test/snapshot.mjs --building restaurant-medium --pos 3,1.6,5 --target 7,1,4');
+  if (!result.building && !result.polygon) {
+    console.error('Usage:');
+    console.error('  node test/snapshot.mjs --building <name> [--view <preset>] [--pos x,y,z --target x,y,z]');
+    console.error('  node test/snapshot.mjs --polygon <file.json> --tags \'{"building":"yes"}\' [--view aerial]');
     process.exit(1);
   }
 
@@ -86,7 +86,11 @@ async function main() {
     await page.waitForFunction(() => window.__testAPI !== undefined, { timeout: 15000 });
 
     // Load building
-    await page.evaluate((name) => window.__testAPI.loadBuildingByName(name), args.building);
+    if (args.polygon) {
+      await page.evaluate((poly, tags) => window.__testAPI.loadCustomBuilding(poly, tags || { building: 'yes' }), args.polygon, args.tags);
+    } else {
+      await page.evaluate((name) => window.__testAPI.loadBuildingByName(name), args.building);
+    }
     await new Promise(r => setTimeout(r, 100));
 
     // Position camera

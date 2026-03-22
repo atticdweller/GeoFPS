@@ -165,10 +165,10 @@ function capture() {
 
 function getBuildingInfo() {
   if (!currentResult) return null;
-  const config = configs[currentConfigIndex];
+  const config = currentConfigIndex >= 0 ? configs[currentConfigIndex] : null;
   return {
-    name: config.name,
-    description: config.description,
+    name: config ? config.name : 'custom',
+    description: config ? config.description : 'Custom polygon',
     center: currentResult.center,
     bbox: currentResult.bbox,
     height: currentResult.height,
@@ -180,11 +180,37 @@ function getBuildingInfo() {
 
 // ── Public API for Puppeteer / Claude ──
 
+// Load arbitrary polygon+tags (for real OSM data testing)
+function loadCustomBuilding(polygon, tags) {
+  if (currentResult) {
+    scene.remove(currentResult.group);
+    currentResult.group.traverse(child => { if (child.geometry) child.geometry.dispose(); });
+  }
+  currentConfigIndex = -1;
+  currentResult = createSingleBuildingMesh(polygon, tags);
+  scene.add(currentResult.group);
+
+  const maxDim = Math.max(
+    currentResult.bbox.maxX - currentResult.bbox.minX,
+    currentResult.bbox.maxY - currentResult.bbox.minY,
+    currentResult.height
+  );
+  const shadowBound = maxDim * 1.2 + 5;
+  sun.shadow.camera.left = -shadowBound;
+  sun.shadow.camera.right = shadowBound;
+  sun.shadow.camera.top = shadowBound;
+  sun.shadow.camera.bottom = -shadowBound;
+  sun.shadow.camera.updateProjectionMatrix();
+
+  return currentResult;
+}
+
 window.__testAPI = {
   getConfigs: () => configs.map(c => c.name),
   getCameraViews: () => ['front', 'right', 'back', 'left', 'aerial', 'top', 'interior'],
   loadBuilding: (index) => loadBuilding(index),
   loadBuildingByName: (name) => loadBuildingByName(name),
+  loadCustomBuilding: (polygon, tags) => loadCustomBuilding(polygon, tags),
   setCameraView: (view) => setCameraView(view),
   setCameraCustom: (px, py, pz, tx, ty, tz) => setCameraCustom(px, py, pz, tx, ty, tz),
   capture: () => capture(),
