@@ -7,14 +7,14 @@ export const materials = {
   dirt: new THREE.MeshLambertMaterial({ color: 0x8b6914 }),
 
   // Buildings
-  wallExterior: new THREE.MeshLambertMaterial({ color: 0xd4c5a9 }),
-  wallInterior: new THREE.MeshLambertMaterial({ color: 0xf0ead6 }),
-  wallCommercial: new THREE.MeshLambertMaterial({ color: 0x9a9a9a }),
+  wallExterior: new THREE.MeshLambertMaterial({ color: 0xd4c5a9, side: THREE.DoubleSide }),
+  wallInterior: new THREE.MeshLambertMaterial({ color: 0xf0ead6, side: THREE.DoubleSide }),
+  wallCommercial: new THREE.MeshLambertMaterial({ color: 0x9a9a9a, side: THREE.DoubleSide }),
   roof: new THREE.MeshLambertMaterial({ color: 0x8b4513 }),
   floor: new THREE.MeshLambertMaterial({ color: 0xc4a76c }),
   ceiling: new THREE.MeshLambertMaterial({ color: 0xeeeee4 }),
   glass: new THREE.MeshLambertMaterial({
-    color: 0x88ccff, transparent: true, opacity: 0.3,
+    color: 0x88ccff, transparent: true, opacity: 0.5, side: THREE.DoubleSide,
   }),
 
   // Furniture

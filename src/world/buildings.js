@@ -128,19 +128,27 @@ function createBuilding(world, bld, roadSegments, elevData, sizeMeters, buckets)
   const area = computeArea2D(points2D);
   if (area < 10) return false;
 
-  // Height
+  // Height — single-story shops/restaurants get one tall floor; offices and apartments get multiple
+  const isSingleStoryCommercial = tags.shop || tags.amenity ||
+    ['retail', 'commercial'].includes(tags.building);
+  const isOffice = tags.office || tags.building === 'office';
+
   let height = 6.4;
   if (tags.height) {
     height = parseFloat(tags.height) || height;
   } else if (tags['building:levels']) {
     height = (parseInt(tags['building:levels']) || 2) * 3.2;
-  } else if (['commercial', 'retail', 'office'].includes(tags.building)) {
-    height = 9.6;
+  } else if (isSingleStoryCommercial) {
+    height = 4.5; // single tall floor
+  } else if (isOffice) {
+    height = 9.6; // 3 floors
   } else if (tags.building === 'apartments') {
-    height = 12.8;
+    height = 12.8; // 4 floors
   }
 
-  const numFloors = Math.max(1, Math.round(height / 3.2));
+  const numFloors = isSingleStoryCommercial && !tags['building:levels'] && !tags.height
+    ? 1
+    : Math.max(1, Math.round(height / 3.2));
   const floorHeight = height / numFloors;
 
   const center = getCenter(points2D);
@@ -227,8 +235,8 @@ function createBuilding(world, bld, roadSegments, elevData, sizeMeters, buckets)
     }
   }
 
-  // Interior for each floor
-  const bbox2D = getBBox2D(points2D);
+  // Interior for each floor — use inscribed bbox so rooms don't overflow non-rectangular polygons
+  const bbox2D = getInscribedBBox(points2D);
   for (let floor = 0; floor < numFloors; floor++) {
     const floorY = baseY + floor * floorHeight;
     generateInterior(bbox2D, area, floorHeight, floorY, floor, tags, buckets, doorInfo);
@@ -348,8 +356,8 @@ function generateWallWithWindows(p0, p1, floorY, floorHeight, nx, nz, matName, i
     buckets.glass.push(glassGeo);
 
     // Window frame (4 strips forming a rectangle, slightly proud of wall)
-    const frameDepth = 0.08;
-    const frameThick = 0.06;
+    const frameDepth = 0.12;
+    const frameThick = 0.08;
     addWindowFrame(wx, wy, wz, winW, winH, nx, nz, angle, frameDepth, frameThick, buckets);
   }
 }
@@ -563,4 +571,42 @@ function getBBox2D(points) {
     if (p.y > maxY) maxY = p.y;
   }
   return { minX, maxX, minY, maxY };
+}
+
+function getInscribedBBox(points) {
+  let { minX, maxX, minY, maxY } = getBBox2D(points);
+  const step = 0.25;
+  for (let iter = 0; iter < 80; iter++) {
+    const corners = [
+      { x: minX, y: minY }, { x: maxX, y: minY },
+      { x: maxX, y: maxY }, { x: minX, y: maxY },
+    ];
+    let allInside = true;
+    for (const c of corners) {
+      if (!pointInPolygon2D(c.x, c.y, points)) {
+        allInside = false;
+        const cx = (minX + maxX) / 2;
+        const cy = (minY + maxY) / 2;
+        if (Math.abs(c.x - cx) > Math.abs(c.y - cy)) {
+          if (c.x > cx) maxX -= step; else minX += step;
+        } else {
+          if (c.y > cy) maxY -= step; else minY += step;
+        }
+      }
+    }
+    if (allInside) break;
+  }
+  return { minX, maxX, minY, maxY };
+}
+
+function pointInPolygon2D(x, y, polygon) {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].x, yi = polygon[i].y;
+    const xj = polygon[j].x, yj = polygon[j].y;
+    if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) {
+      inside = !inside;
+    }
+  }
+  return inside;
 }

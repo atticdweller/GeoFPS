@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:buildings": "node test/capture.mjs",
+    "test:snapshot": "node test/snapshot.mjs"
   },
   "keywords": [],
   "author": "",
@@ -17,6 +19,7 @@
     "three": "^0.183.2"
   },
   "devDependencies": {
+    "puppeteer": "^24.0.0",
     "vite": "^8.0.1"
   }
 }

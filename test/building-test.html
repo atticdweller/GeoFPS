@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>GeoFPS — Building Test</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #222; overflow: hidden; }
+    canvas { display: block; }
+    #controls {
+      position: fixed; top: 10px; left: 10px; z-index: 10;
+      background: rgba(0,0,0,0.8); padding: 12px; color: #fff;
+      font-family: monospace; font-size: 12px; border-radius: 6px;
+      max-width: 320px;
+    }
+    #controls label { display: block; margin: 6px 0 2px; color: #aaa; }
+    #controls select, #controls button {
+      font-family: monospace; font-size: 12px; padding: 4px 8px;
+      width: 100%; margin-bottom: 4px;
+    }
+    #controls button { cursor: pointer; background: #4CAF50; color: #fff; border: none; border-radius: 3px; }
+    #controls button:hover { background: #45a049; }
+    #info { margin-top: 8px; color: #888; font-size: 11px; line-height: 1.4; }
+  </style>
+</head>
+<body>
+  <div id="controls">
+    <div style="font-size: 14px; font-weight: bold; margin-bottom: 8px;">Building Test</div>
+    <label>Building:</label>
+    <select id="config-select"></select>
+    <label>Camera:</label>
+    <select id="camera-select">
+      <option value="front">Front</option>
+      <option value="right">Right</option>
+      <option value="back">Back</option>
+      <option value="left">Left</option>
+      <option value="aerial" selected>Aerial</option>
+      <option value="top">Top</option>
+      <option value="interior">Interior</option>
+    </select>
+    <button id="capture-btn" style="margin-top: 8px;">Download Screenshot</button>
+    <div id="info"></div>
+  </div>
+  <script type="module" src="./building-test.js"></script>
+</body>
+</html>
