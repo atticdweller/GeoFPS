@@ -231,8 +231,6 @@ function generateWallWithWindows(p0, p1, floorY, floorHeight, nx, nz, matName, i
   const wallHeight = floorHeight;
   const edgeLen = p0.distanceTo(p1);
 
-  addWallQuad(p0, p1, floorY, wallHeight, nx, nz, matName, buckets);
-
   let winW, winH, winSill, spacing;
   if (isCommercial && isGroundFloor) {
     winW = 1.4; winH = 1.6; winSill = 0.6; spacing = 2.5;
@@ -242,47 +240,56 @@ function generateWallWithWindows(p0, p1, floorY, floorHeight, nx, nz, matName, i
 
   const margin = 0.5;
   const usableLen = edgeLen - 2 * margin;
-  if (usableLen < winW + 0.5) return;
+
+  if (usableLen < winW + 0.5) {
+    addWallQuad(p0, p1, floorY, wallHeight, nx, nz, matName, buckets);
+    return;
+  }
 
   const numWin = Math.max(1, Math.floor(usableLen / spacing));
   const actualSpacing = usableLen / numWin;
 
+  const windows = [];
   for (let w = 0; w < numWin; w++) {
-    const t = (margin + actualSpacing * (w + 0.5)) / edgeLen;
-    const wx = p0.x + (p1.x - p0.x) * t;
-    const wz = p0.y + (p1.y - p0.y) * t;
-    const wy = floorY + winSill + winH / 2;
+    const centerT = (margin + actualSpacing * (w + 0.5)) / edgeLen;
+    const halfWT = (winW / 2) / edgeLen;
+    windows.push({ startT: centerT - halfWT, endT: centerT + halfWT, centerT });
+  }
 
-    const glassGeo = new THREE.PlaneGeometry(winW, winH);
+  let prevT = 0;
+  for (const win of windows) {
+    if (win.startT - prevT > 0.001) {
+      addWallQuad(lerpVec2(p0, p1, prevT), lerpVec2(p0, p1, win.startT), floorY, wallHeight, nx, nz, matName, buckets);
+    }
+    if (winSill > 0.05) {
+      addWallQuad(lerpVec2(p0, p1, win.startT), lerpVec2(p0, p1, win.endT), floorY, winSill, nx, nz, matName, buckets);
+    }
+    const aboveY = floorY + winSill + winH;
+    const aboveH = wallHeight - winSill - winH;
+    if (aboveH > 0.05) {
+      addWallQuad(lerpVec2(p0, p1, win.startT), lerpVec2(p0, p1, win.endT), aboveY, aboveH, nx, nz, matName, buckets);
+    }
+
+    const wx = p0.x + (p1.x - p0.x) * win.centerT;
+    const wz = p0.y + (p1.y - p0.y) * win.centerT;
+    const wy = floorY + winSill + winH / 2;
     const angle = Math.atan2(p1.y - p0.y, p1.x - p0.x);
+    const glassGeo = new THREE.PlaneGeometry(winW, winH);
     glassGeo.rotateY(-angle + Math.PI / 2);
-    glassGeo.translate(wx + nx * 0.02, wy, wz + nz * 0.02);
+    glassGeo.translate(wx, wy, wz);
     glassGeo.computeVertexNormals();
     buckets.glass.push(glassGeo);
 
-    addWindowFrame(wx, wy, wz, winW, winH, nx, nz, angle, 0.12, 0.08, buckets);
+    prevT = win.endT;
+  }
+
+  if (1 - prevT > 0.001) {
+    addWallQuad(lerpVec2(p0, p1, prevT), p1, floorY, wallHeight, nx, nz, matName, buckets);
   }
 }
 
-function addWindowFrame(cx, cy, cz, winW, winH, nx, nz, angle, depth, thick, buckets) {
-  const halfW = winW / 2;
-  const halfH = winH / 2;
-  const pieces = [
-    { w: winW + thick * 2, h: thick, ox: 0, oy: halfH + thick / 2 },
-    { w: winW + thick * 2, h: thick, ox: 0, oy: -halfH - thick / 2 },
-    { w: thick, h: winH, ox: -halfW - thick / 2, oy: 0 },
-    { w: thick, h: winH, ox: halfW + thick / 2, oy: 0 },
-  ];
-
-  for (const piece of pieces) {
-    const geo = new THREE.BoxGeometry(piece.w, piece.h, depth);
-    geo.rotateY(-angle + Math.PI / 2);
-    const edx = Math.cos(angle);
-    const edz = Math.sin(angle);
-    geo.translate(cx + edx * piece.ox + nx * 0.01, cy + piece.oy, cz + edz * piece.ox + nz * 0.01);
-    geo.computeVertexNormals();
-    buckets.windowFrame.push(geo);
-  }
+function lerpVec2(a, b, t) {
+  return new THREE.Vector2(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);
 }
 
 function addWallQuad(p0, p1, y, height, nx, nz, matName, buckets) {

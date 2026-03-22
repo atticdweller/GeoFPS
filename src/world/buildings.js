@@ -315,76 +315,87 @@ function generateWallWithWindows(p0, p1, floorY, floorHeight, nx, nz, matName, i
   const wallHeight = floorHeight;
   const edgeLen = p0.distanceTo(p1);
 
-  // Full wall backdrop
-  addWallQuad(p0, p1, floorY, wallHeight, nx, nz, matName, buckets);
-
   // Window parameters based on building type
   let winW, winH, winSill, spacing;
   if (isCommercial && isGroundFloor) {
-    // Large storefront windows
     winW = 1.4; winH = 1.6; winSill = 0.6; spacing = 2.5;
   } else {
-    // Regular windows
     winW = 0.9; winH = 1.1; winSill = 0.9; spacing = 3.0;
   }
 
-  // Place windows at regular intervals
-  const margin = 0.5; // min distance from wall corners
+  const margin = 0.5;
   const usableLen = edgeLen - 2 * margin;
-  if (usableLen < winW + 0.5) return; // wall too short for windows
+
+  // If wall too short for windows, just a solid wall
+  if (usableLen < winW + 0.5) {
+    addWallQuad(p0, p1, floorY, wallHeight, nx, nz, matName, buckets);
+    return;
+  }
 
   const numWin = Math.max(1, Math.floor(usableLen / spacing));
   const actualSpacing = usableLen / numWin;
 
+  // Compute window positions as parametric t values along the edge
+  const windows = [];
   for (let w = 0; w < numWin; w++) {
-    const t = (margin + actualSpacing * (w + 0.5)) / edgeLen;
-    const wx = p0.x + (p1.x - p0.x) * t;
-    const wz = p0.y + (p1.y - p0.y) * t;
-    const wy = floorY + winSill + winH / 2;
+    const centerT = (margin + actualSpacing * (w + 0.5)) / edgeLen;
+    const halfWT = (winW / 2) / edgeLen;
+    windows.push({ startT: centerT - halfWT, endT: centerT + halfWT, centerT });
+  }
 
-    // Window glass pane (slightly inset from wall surface)
-    const glassGeo = new THREE.PlaneGeometry(winW, winH);
+  // Split wall into sections around window openings
+  let prevT = 0;
+  for (const win of windows) {
+    // Wall section before this window (full height)
+    if (win.startT - prevT > 0.001) {
+      const wP0 = lerpVec2(p0, p1, prevT);
+      const wP1 = lerpVec2(p0, p1, win.startT);
+      addWallQuad(wP0, wP1, floorY, wallHeight, nx, nz, matName, buckets);
+    }
+
+    // Wall below window (sill)
+    if (winSill > 0.05) {
+      const wP0 = lerpVec2(p0, p1, win.startT);
+      const wP1 = lerpVec2(p0, p1, win.endT);
+      addWallQuad(wP0, wP1, floorY, winSill, nx, nz, matName, buckets);
+    }
+
+    // Wall above window
+    const aboveY = floorY + winSill + winH;
+    const aboveH = wallHeight - winSill - winH;
+    if (aboveH > 0.05) {
+      const wP0 = lerpVec2(p0, p1, win.startT);
+      const wP1 = lerpVec2(p0, p1, win.endT);
+      addWallQuad(wP0, wP1, aboveY, aboveH, nx, nz, matName, buckets);
+    }
+
+    // Glass pane in the opening
+    const wx = p0.x + (p1.x - p0.x) * win.centerT;
+    const wz = p0.y + (p1.y - p0.y) * win.centerT;
+    const wy = floorY + winSill + winH / 2;
     const angle = Math.atan2(p1.y - p0.y, p1.x - p0.x);
+
+    const glassGeo = new THREE.PlaneGeometry(winW, winH);
     glassGeo.rotateY(-angle + Math.PI / 2);
-    glassGeo.translate(wx + nx * 0.02, wy, wz + nz * 0.02);
+    glassGeo.translate(wx, wy, wz);
     glassGeo.computeVertexNormals();
     buckets.glass.push(glassGeo);
 
-    // Window frame (4 strips forming a rectangle, slightly proud of wall)
-    const frameDepth = 0.12;
-    const frameThick = 0.08;
-    addWindowFrame(wx, wy, wz, winW, winH, nx, nz, angle, frameDepth, frameThick, buckets);
+    prevT = win.endT;
+  }
+
+  // Wall section after last window
+  if (1 - prevT > 0.001) {
+    const wP0 = lerpVec2(p0, p1, prevT);
+    addWallQuad(wP0, p1, floorY, wallHeight, nx, nz, matName, buckets);
   }
 }
 
-function addWindowFrame(cx, cy, cz, winW, winH, nx, nz, angle, depth, thick, buckets) {
-  const halfW = winW / 2;
-  const halfH = winH / 2;
-
-  // Four frame pieces: top, bottom, left, right
-  const pieces = [
-    { w: winW + thick * 2, h: thick, ox: 0, oy: halfH + thick / 2 },  // top
-    { w: winW + thick * 2, h: thick, ox: 0, oy: -halfH - thick / 2 }, // bottom
-    { w: thick, h: winH, ox: -halfW - thick / 2, oy: 0 },             // left
-    { w: thick, h: winH, ox: halfW + thick / 2, oy: 0 },              // right
-  ];
-
-  for (const piece of pieces) {
-    const geo = new THREE.BoxGeometry(piece.w, piece.h, depth);
-    geo.rotateY(-angle + Math.PI / 2);
-
-    // Offset along the wall edge direction
-    const edx = Math.cos(angle);
-    const edz = Math.sin(angle);
-
-    geo.translate(
-      cx + edx * piece.ox + nx * 0.01,
-      cy + piece.oy,
-      cz + edz * piece.ox + nz * 0.01
-    );
-    geo.computeVertexNormals();
-    buckets.windowFrame.push(geo);
-  }
+function lerpVec2(a, b, t) {
+  return new THREE.Vector2(
+    a.x + (b.x - a.x) * t,
+    a.y + (b.y - a.y) * t
+  );
 }
 
 function addWallQuad(p0, p1, y, height, nx, nz, matName, buckets) {
