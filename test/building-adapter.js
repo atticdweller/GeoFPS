@@ -331,12 +331,18 @@ function getBBox2D(points) {
 }
 
 function getInscribedBBox(points) {
-  let { minX, maxX, minY, maxY } = getBBox2D(points);
+  const full = getBBox2D(points);
+
+  // For near-rectangular polygons (4 vertices), bbox already matches — skip shrinking
+  if (points.length <= 4) return full;
+
+  let { minX, maxX, minY, maxY } = { ...full };
+  const eps = 0.1;
   const step = 0.25;
   for (let iter = 0; iter < 80; iter++) {
     const corners = [
-      { x: minX, y: minY }, { x: maxX, y: minY },
-      { x: maxX, y: maxY }, { x: minX, y: maxY },
+      { x: minX + eps, y: minY + eps }, { x: maxX - eps, y: minY + eps },
+      { x: maxX - eps, y: maxY - eps }, { x: minX + eps, y: maxY - eps },
     ];
     let allInside = true;
     for (const c of corners) {
@@ -353,6 +359,11 @@ function getInscribedBBox(points) {
     }
     if (allInside) break;
   }
+
+  const origArea = (full.maxX - full.minX) * (full.maxY - full.minY);
+  const newArea = (maxX - minX) * (maxY - minY);
+  if (newArea < origArea * 0.5 || maxX <= minX || maxY <= minY) return full;
+
   return { minX, maxX, minY, maxY };
 }
 
