@@ -400,6 +400,7 @@ function getSharedEdge(a, b) {
 function buildRoomWalls(room, allRooms, doorConns, bbox, floorY, floorHeight, buckets) {
   const wallHeight = floorHeight - 0.2;
   const wallY = floorY + wallHeight / 2;
+  const eps = 0.2;
 
   const edges = [
     { axis: 'z', pos: room.z, start: room.x, end: room.x + room.w },
@@ -409,6 +410,10 @@ function buildRoomWalls(room, allRooms, doorConns, bbox, floorY, floorHeight, bu
   ];
 
   for (const edge of edges) {
+    // Skip edges on the building perimeter — exterior walls already handle those
+    if (edge.axis === 'z' && (Math.abs(edge.pos - bbox.minY) < eps || Math.abs(edge.pos - bbox.maxY) < eps)) continue;
+    if (edge.axis === 'x' && (Math.abs(edge.pos - bbox.minX) < eps || Math.abs(edge.pos - bbox.maxX) < eps)) continue;
+
     const door = doorConns.find(c =>
       c.shared.axis === edge.axis && Math.abs(c.shared.pos - edge.pos) < 0.1
     );

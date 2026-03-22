@@ -193,15 +193,16 @@ function createBuilding(world, bld, roadSegments, elevData, sizeMeters, buckets)
       }
     }
 
-    // Roof cap for this edge (top face of the wall)
-    // Skip — the ExtrudeGeometry cap below handles the roof
   }
 
-  // Roof (flat top cap)
+  // Roof (flat top cap) — ensure correct winding for ShapeGeometry
   const roofShape = new THREE.Shape();
-  roofShape.moveTo(points2D[0].x, points2D[0].y);
-  for (let i = 1; i < points2D.length; i++) {
-    roofShape.lineTo(points2D[i].x, points2D[i].y);
+  // Three.js Shape expects counter-clockwise winding; check and reverse if needed
+  const signedArea = computeSignedArea2D(points2D);
+  const orderedPts = signedArea < 0 ? [...points2D].reverse() : points2D;
+  roofShape.moveTo(orderedPts[0].x, orderedPts[0].y);
+  for (let i = 1; i < orderedPts.length; i++) {
+    roofShape.lineTo(orderedPts[i].x, orderedPts[i].y);
   }
   roofShape.closePath();
   const roofGeo = new THREE.ShapeGeometry(roofShape);
@@ -210,12 +211,6 @@ function createBuilding(world, bld, roadSegments, elevData, sizeMeters, buckets)
   roofGeo.computeVertexNormals();
   buckets[wallMatName].push(roofGeo);
 
-  // Floor cap (bottom)
-  const floorGeo = new THREE.ShapeGeometry(roofShape);
-  floorGeo.rotateX(Math.PI / 2);
-  floorGeo.translate(0, baseY + 0.01, 0);
-  floorGeo.computeVertexNormals();
-  buckets.floor.push(floorGeo);
 
   // Per-wall physics bodies (with door gap on front wall)
   for (let i = 0; i < points2D.length; i++) {
@@ -548,12 +543,16 @@ function pointToSegDist2D(px, pz, ax, az, bx, bz) {
   return Math.hypot(px - (ax + t * dx), pz - (az + t * dz));
 }
 
-function computeArea2D(points) {
+function computeSignedArea2D(points) {
   let area = 0;
   for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
     area += (points[j].x + points[i].x) * (points[j].y - points[i].y);
   }
-  return Math.abs(area / 2);
+  return area / 2;
+}
+
+function computeArea2D(points) {
+  return Math.abs(computeSignedArea2D(points));
 }
 
 function getCenter(points) {
