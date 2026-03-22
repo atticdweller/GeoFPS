@@ -2,15 +2,18 @@ import * as CANNON from 'cannon-es';
 import { initScene } from './core/scene.js';
 import { startLoop, onUpdate } from './core/loop.js';
 import { initPlayer } from './player/controller.js';
-import { initWeapon, onHit } from './player/weapon.js';
+import { initWeapon } from './player/weapon.js';
 import { initEnemies } from './enemies/spawner.js';
 import { showPicker } from './geo/picker.js';
 import { initProjection, getBbox } from './geo/projection.js';
 import { bboxSizeMeters } from './geo/projection.js';
-import { fetchBuildings } from './geo/overpass.js';
+import { fetchOSMData } from './geo/overpass.js';
 import { fetchElevation } from './geo/elevation.js';
-import { createTerrain } from './world/terrain.js';
+import { createTerrain, flattenTerrainUnderRoads } from './world/terrain.js';
 import { generateBuildings } from './world/buildings.js';
+import { generateStreets } from './world/streets.js';
+import { placeStreetFurniture } from './world/streetFurniture.js';
+import { placeParkedCars, initTraffic } from './world/vehicles.js';
 
 // Loading screen helpers
 const loadingEl = document.getElementById('loading');
@@ -28,10 +31,10 @@ function hideLoading() {
 }
 
 async function main() {
-  // 1. Init Three.js scene (needed for rendering during loading)
+  // 1. Init Three.js scene
   initScene();
 
-  // 2. Show location picker — wait for user to choose a spot
+  // 2. Show location picker
   const location = await showPicker();
   console.log(`Selected location: ${location.lat}, ${location.lng}`);
 
@@ -41,72 +44,118 @@ async function main() {
   const bbox = getBbox(location.lat, location.lng, radius);
   const sizeMeters = bboxSizeMeters(bbox);
 
-  // 4. Show loading screen
-  showLoading('Fetching building data...', 10);
+  // 4. Fetch data
+  showLoading('Fetching map data...', 10);
 
-  // 5. Fetch data in parallel
-  let buildingData, elevData;
+  let buildingData, roadData, elevData;
   try {
-    const [bldResult, elevResult] = await Promise.all([
-      fetchBuildings(bbox),
+    const [osmResult, elevResult] = await Promise.all([
+      fetchOSMData(bbox),
       (showLoading('Fetching elevation data...', 20), fetchElevation(bbox, 32)),
     ]);
-    buildingData = bldResult;
+    buildingData = osmResult.buildings;
+    roadData = osmResult.roads;
     elevData = elevResult;
   } catch (e) {
     console.error('Data fetch error:', e);
-    // Fallback: empty buildings, flat terrain
     buildingData = [];
+    roadData = [];
     elevData = {
       grid: Array.from({ length: 32 }, () => new Float32Array(32)),
       width: 32, height: 32, minElev: 0, maxElev: 0,
     };
   }
 
-  showLoading('Generating terrain...', 50);
-  await tick(); // yield to let UI update
+  showLoading('Generating terrain...', 40);
+  await tick();
 
-  // 6. Physics world
+  // 5. Physics world
   const world = new CANNON.World({
     gravity: new CANNON.Vec3(0, -20, 0),
   });
   world.broadphase = new CANNON.SAPBroadphase(world);
 
-  // Physics step in game loop
   onUpdate((dt) => {
     world.step(1 / 60, dt, 3);
   });
 
-  // 7. Create terrain
-  createTerrain(world, elevData, sizeMeters);
+  // 6. Create terrain
+  const terrainMesh = createTerrain(world, elevData, sizeMeters);
 
-  showLoading(`Generating ${buildingData.length} buildings...`, 65);
+  // 7. Generate streets & sidewalks
+  showLoading('Generating streets...', 50);
   await tick();
 
-  // 8. Generate buildings with interiors
-  generateBuildings(world, buildingData, elevData, sizeMeters);
+  // Street geometry buckets (separate from building buckets since streets merge independently)
+  const streetBuckets = {
+    asphalt: [], sidewalk: [], curb: [],
+    laneMarkingWhite: [], laneMarkingYellow: [],
+  };
 
+  let roadGraph = null;
+  let projectedRoads = [];
+
+  if (roadData.length > 0) {
+    const result = generateStreets(world, roadData, sizeMeters, streetBuckets);
+    roadGraph = result.roadGraph;
+    projectedRoads = result.projectedRoads;
+
+    // Flatten terrain under roads
+    flattenTerrainUnderRoads(terrainMesh, projectedRoads, sizeMeters);
+  }
+
+  // 8. Generate buildings with interiors
+  showLoading(`Generating ${buildingData.length} buildings...`, 60);
+  await tick();
+
+  generateBuildings(world, buildingData, projectedRoads, elevData, sizeMeters);
+
+  // 9. Street furniture
+  showLoading('Placing street furniture...', 75);
+  await tick();
+
+  const furnitureBuckets = {
+    lampPost: [], lampHead: [], hydrant: [], mailbox: [],
+    garbageCan: [], metal: [], wood: [],
+  };
+
+  if (projectedRoads.length > 0) {
+    placeStreetFurniture(projectedRoads, world, furnitureBuckets);
+  }
+
+  // 10. Vehicles
+  showLoading('Placing vehicles...', 85);
+  await tick();
+
+  if (projectedRoads.length > 0) {
+    placeParkedCars(projectedRoads, world);
+  }
+
+  if (roadGraph) {
+    initTraffic(roadGraph);
+  }
+
+  // 11. Player (debug mode on by default)
   showLoading('Spawning player...', 90);
   await tick();
 
-  // 9. Player
   initPlayer(world);
 
-  // 10. Weapon
+  // 12. Weapon
   initWeapon();
 
-  // 11. Enemies
+  // 13. Enemies
   initEnemies();
 
   showLoading('Ready!', 100);
   await tick();
 
-  // 12. Hide loading, show blocker (click to play)
+  // 14. Show game
   hideLoading();
   document.getElementById('hud').style.display = 'block';
   document.getElementById('blocker').style.display = 'flex';
 
-  // 13. Start game loop
+  // 15. Start game loop
   startLoop();
 }
 

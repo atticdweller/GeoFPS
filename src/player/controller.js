@@ -8,13 +8,16 @@ import { keys, initInput } from '../core/input.js';
 export let controls;
 let physicsBody;
 let canJump = false;
-const velocity = new THREE.Vector3();
 const direction = new THREE.Vector3();
 
 const MOVE_SPEED = 8;
+const SPRINT_MULTIPLIER = 2.5;
+const FLY_SPRINT_MULTIPLIER = 8;
 const JUMP_VELOCITY = 8;
 const PLAYER_HEIGHT = 1.7;
 const PLAYER_RADIUS = 0.4;
+
+let wasDebugMode = true; // track toggle transitions
 
 export function initPlayer(world) {
   initInput();
@@ -67,6 +70,53 @@ export function initPlayer(world) {
 function updatePlayer(dt) {
   if (!controls.isLocked) return;
 
+  // Handle debug mode toggle transitions
+  if (!keys.debugMode && wasDebugMode) {
+    // Switching from debug to normal: teleport physics body to camera
+    physicsBody.position.set(camera.position.x, camera.position.y - PLAYER_HEIGHT + PLAYER_RADIUS, camera.position.z);
+    physicsBody.velocity.set(0, 0, 0);
+  }
+  wasDebugMode = keys.debugMode;
+
+  if (keys.debugMode) {
+    updateDebugMode(dt);
+  } else {
+    updateNormalMode(dt);
+  }
+}
+
+function updateDebugMode(dt) {
+  const speed = MOVE_SPEED * (keys.sprint ? FLY_SPRINT_MULTIPLIER : 1);
+
+  // Movement direction from keys
+  direction.z = Number(keys.forward) - Number(keys.backward);
+  direction.x = Number(keys.right) - Number(keys.left);
+  direction.y = Number(keys.up) - Number(keys.down);
+  direction.normalize();
+
+  // Full 3D camera-relative movement (don't zero Y for forward/back)
+  const forward = new THREE.Vector3();
+  camera.getWorldDirection(forward);
+  forward.normalize();
+
+  const right = new THREE.Vector3();
+  right.crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
+
+  const up = new THREE.Vector3(0, 1, 0);
+
+  // Move camera directly — no physics
+  camera.position.x += (forward.x * direction.z + right.x * direction.x) * speed * dt;
+  camera.position.y += (forward.y * direction.z + up.y * direction.y) * speed * dt;
+  camera.position.z += (forward.z * direction.z + right.z * direction.x) * speed * dt;
+
+  // Keep physics body in sync but don't let it interfere
+  physicsBody.velocity.set(0, 0, 0);
+  physicsBody.position.set(camera.position.x, camera.position.y - PLAYER_HEIGHT + PLAYER_RADIUS, camera.position.z);
+}
+
+function updateNormalMode(dt) {
+  const speed = MOVE_SPEED * (keys.sprint ? SPRINT_MULTIPLIER : 1);
+
   // Movement direction from keys
   direction.z = Number(keys.forward) - Number(keys.backward);
   direction.x = Number(keys.right) - Number(keys.left);
@@ -82,8 +132,8 @@ function updatePlayer(dt) {
   right.crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
 
   // Set velocity directly for responsive FPS movement
-  const moveX = (forward.x * direction.z + right.x * direction.x) * MOVE_SPEED;
-  const moveZ = (forward.z * direction.z + right.z * direction.x) * MOVE_SPEED;
+  const moveX = (forward.x * direction.z + right.x * direction.x) * speed;
+  const moveZ = (forward.z * direction.z + right.z * direction.x) * speed;
   physicsBody.velocity.x = moveX;
   physicsBody.velocity.z = moveZ;
 

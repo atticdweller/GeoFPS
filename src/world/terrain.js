@@ -69,6 +69,63 @@ export function createTerrain(world, elevData, sizeMeters) {
 }
 
 /**
+ * Flatten terrain vertices that fall within road corridors.
+ * Call after createTerrain() but before rendering.
+ */
+export function flattenTerrainUnderRoads(terrainMesh, projectedRoads, sizeMeters) {
+  if (!projectedRoads || projectedRoads.length === 0) return;
+
+  const positions = terrainMesh.geometry.attributes.position;
+  const colors = terrainMesh.geometry.attributes.color;
+  const asphaltColor = new THREE.Color(0x444444);
+
+  for (let i = 0; i < positions.count; i++) {
+    const vx = positions.getX(i);
+    const vz = positions.getZ(i);
+
+    let minDist = Infinity;
+    let roadY = 0;
+    let corridor = 0;
+
+    // Check distance to each road segment centerline
+    for (const road of projectedRoads) {
+      const totalCorridor = road.roadWidth / 2 + (road.sidewalkWidth > 0 ? 0.15 + road.sidewalkWidth : 0);
+
+      for (let j = 0; j < road.points.length - 1; j++) {
+        const a = road.points[j];
+        const b = road.points[j + 1];
+        const dist = pointToSegmentDist(vx, vz, a.x, a.z, b.x, b.z);
+        if (dist < minDist) {
+          minDist = dist;
+          corridor = totalCorridor;
+          roadY = 0; // roads sit at Y=0
+        }
+      }
+    }
+
+    if (minDist < corridor) {
+      // Flatten vertex to road level
+      positions.setY(i, roadY);
+      // Darken vertex color to hint at road area
+      colors.setXYZ(i, asphaltColor.r, asphaltColor.g, asphaltColor.b);
+    }
+  }
+
+  positions.needsUpdate = true;
+  colors.needsUpdate = true;
+  terrainMesh.geometry.computeVertexNormals();
+}
+
+function pointToSegmentDist(px, pz, ax, az, bx, bz) {
+  const dx = bx - ax, dz = bz - az;
+  const lenSq = dx * dx + dz * dz;
+  if (lenSq < 0.001) return Math.hypot(px - ax, pz - az);
+  let t = ((px - ax) * dx + (pz - az) * dz) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (ax + t * dx), pz - (az + t * dz));
+}
+
+/**
  * Get terrain elevation at a world position by sampling the elevation grid.
  */
 export function getTerrainElevation(elevData, sizeMeters, x, z) {

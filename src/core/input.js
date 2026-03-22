@@ -5,6 +5,10 @@ export const keys = {
   left: false,
   right: false,
   jump: false,
+  up: false,
+  down: false,
+  sprint: false,
+  debugMode: true, // start in debug/fly mode by default
 };
 
 function onKeyDown(e) {
@@ -14,6 +18,10 @@ function onKeyDown(e) {
     case 'KeyA': case 'ArrowLeft':  keys.left = true; break;
     case 'KeyD': case 'ArrowRight': keys.right = true; break;
     case 'Space':                   keys.jump = true; break;
+    case 'KeyE':                    keys.up = true; break;
+    case 'KeyQ':                    keys.down = true; break;
+    case 'ShiftLeft': case 'ShiftRight': keys.sprint = true; break;
+    case 'Backquote':               keys.debugMode = !keys.debugMode; break;
   }
 }
 
@@ -24,6 +32,9 @@ function onKeyUp(e) {
     case 'KeyA': case 'ArrowLeft':  keys.left = false; break;
     case 'KeyD': case 'ArrowRight': keys.right = false; break;
     case 'Space':                   keys.jump = false; break;
+    case 'KeyE':                    keys.up = false; break;
+    case 'KeyQ':                    keys.down = false; break;
+    case 'ShiftLeft': case 'ShiftRight': keys.sprint = false; break;
   }
 }
 
