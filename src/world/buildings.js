@@ -230,11 +230,39 @@ function createBuilding(world, bld, roadSegments, elevData, sizeMeters, buckets)
     }
   }
 
-  // Interior for each floor — use inscribed bbox so rooms don't overflow non-rectangular polygons
-  const bbox2D = getInscribedBBox(points2D);
+  // Interior generation: rotate coordinate system to match building orientation
+  // so rooms fill the building properly even for rotated polygons
+  const longestIdx = findLongestEdge(points2D);
+  const le0 = points2D[longestIdx];
+  const le1 = points2D[(longestIdx + 1) % points2D.length];
+  const buildingAngle = Math.atan2(le1.y - le0.y, le1.x - le0.x);
+
+  // Rotate polygon to axis-aligned around its center
+  const cx = center.x, cy = center.y;
+  const cosA = Math.cos(-buildingAngle), sinA = Math.sin(-buildingAngle);
+  const rotatedPts = points2D.map(p => new THREE.Vector2(
+    cx + (p.x - cx) * cosA - (p.y - cy) * sinA,
+    cy + (p.x - cx) * sinA + (p.y - cy) * cosA
+  ));
+  const rotBbox = getInscribedBBox(rotatedPts);
+
   for (let floor = 0; floor < numFloors; floor++) {
     const floorY = baseY + floor * floorHeight;
-    generateInterior(bbox2D, area, floorHeight, floorY, floor, tags, buckets, doorInfo);
+
+    // Track which geometries are added during this call
+    const beforeCounts = {};
+    for (const [k, v] of Object.entries(buckets)) beforeCounts[k] = v.length;
+
+    generateInterior(rotBbox, area, floorHeight, floorY, floor, tags, buckets, doorInfo);
+
+    // Rotate all newly generated interior geometry back to world orientation
+    if (Math.abs(buildingAngle) > 0.01) {
+      for (const [k, v] of Object.entries(buckets)) {
+        for (let i = beforeCounts[k] || 0; i < v.length; i++) {
+          rotateGeometryAroundPoint(v[i], cx, cy, buildingAngle);
+        }
+      }
+    }
   }
 
   return true;
@@ -543,6 +571,37 @@ function computeDoorPosition(points2D, edgeIndex, baseY) {
     z: p0.y + (p1.y - p0.y) * t,
     baseY,
   };
+}
+
+function findLongestEdge(points2D) {
+  let maxLen = 0, best = 0;
+  for (let i = 0; i < points2D.length; i++) {
+    const j = (i + 1) % points2D.length;
+    const len = points2D[i].distanceTo(points2D[j]);
+    if (len > maxLen) { maxLen = len; best = i; }
+  }
+  return best;
+}
+
+function rotateGeometryAroundPoint(geometry, cx, cz, angle) {
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const positions = geometry.attributes.position;
+  const normals = geometry.attributes.normal;
+  for (let i = 0; i < positions.count; i++) {
+    const x = positions.getX(i) - cx;
+    const z = positions.getZ(i) - cz;
+    positions.setX(i, cx + x * cos - z * sin);
+    positions.setZ(i, cz + x * sin + z * cos);
+    if (normals) {
+      const nx = normals.getX(i);
+      const nz = normals.getZ(i);
+      normals.setX(i, nx * cos - nz * sin);
+      normals.setZ(i, nx * sin + nz * cos);
+    }
+  }
+  positions.needsUpdate = true;
+  if (normals) normals.needsUpdate = true;
 }
 
 function pointToSegDist2D(px, pz, ax, az, bx, bz) {

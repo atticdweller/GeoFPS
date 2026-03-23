@@ -138,11 +138,35 @@ function _createBuilding(polygon, tags, baseY) {
   floorGeo.computeVertexNormals();
   buckets.floor.push(floorGeo);
 
-  // Interiors — use inscribed bbox so rooms don't overflow non-rectangular polygons
-  const interiorBbox = getInscribedBBox(points2D);
+  // Interior generation: rotate coordinate system to match building orientation
+  const longestIdx = findLongestEdge(points2D);
+  const le0 = points2D[longestIdx];
+  const le1 = points2D[(longestIdx + 1) % points2D.length];
+  const buildingAngle = Math.atan2(le1.y - le0.y, le1.x - le0.x);
+
+  const cx = center.x, cy = center.y;
+  const cosA = Math.cos(-buildingAngle), sinA = Math.sin(-buildingAngle);
+  const rotatedPts = points2D.map(p => new THREE.Vector2(
+    cx + (p.x - cx) * cosA - (p.y - cy) * sinA,
+    cy + (p.x - cx) * sinA + (p.y - cy) * cosA
+  ));
+  const rotBbox = getInscribedBBox(rotatedPts);
+
   for (let floor = 0; floor < numFloors; floor++) {
     const floorY = baseY + floor * floorHeight;
-    generateInterior(interiorBbox, area, floorHeight, floorY, floor, tags, buckets, doorInfo);
+
+    const beforeCounts = {};
+    for (const [k, v] of Object.entries(buckets)) beforeCounts[k] = v.length;
+
+    generateInterior(rotBbox, area, floorHeight, floorY, floor, tags, buckets, doorInfo);
+
+    if (Math.abs(buildingAngle) > 0.01) {
+      for (const [k, v] of Object.entries(buckets)) {
+        for (let i = beforeCounts[k] || 0; i < v.length; i++) {
+          rotateGeometryAroundPoint(v[i], cx, cy, buildingAngle);
+        }
+      }
+    }
   }
 
   // Merge buckets into group
@@ -384,6 +408,27 @@ function pointInPolygon2D(x, y, polygon) {
     }
   }
   return inside;
+}
+
+function rotateGeometryAroundPoint(geometry, cx, cz, angle) {
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const positions = geometry.attributes.position;
+  const normals = geometry.attributes.normal;
+  for (let i = 0; i < positions.count; i++) {
+    const x = positions.getX(i) - cx;
+    const z = positions.getZ(i) - cz;
+    positions.setX(i, cx + x * cos - z * sin);
+    positions.setZ(i, cz + x * sin + z * cos);
+    if (normals) {
+      const nx = normals.getX(i);
+      const nz = normals.getZ(i);
+      normals.setX(i, nx * cos - nz * sin);
+      normals.setZ(i, nx * sin + nz * cos);
+    }
+  }
+  positions.needsUpdate = true;
+  if (normals) normals.needsUpdate = true;
 }
 
 function findLongestEdge(points2D) {
