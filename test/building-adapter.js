@@ -5,7 +5,7 @@
  */
 import * as THREE from 'three';
 import { materials } from '../src/utils/materials.js';
-import { generateInterior } from '../src/world/interiors.js';
+import { generateInterior, getFloorplan } from '../src/world/interiors.js';
 
 const DOOR_WIDTH = 0.9;
 const DOOR_HEIGHT = 2.1;
@@ -84,7 +84,7 @@ function _createBuilding(polygon, tags, baseY) {
   };
 
   // Find front edge (longest, since no road data)
-  const frontEdge = findLongestEdge(points2D);
+  const frontEdge = findFrontEdge(points2D);
   const doorInfo = computeDoorPosition(points2D, frontEdge);
 
   // Determine building type for reporting
@@ -118,11 +118,12 @@ function _createBuilding(polygon, tags, baseY) {
     }
   }
 
-  // Roof cap
+  // Roof cap — let ShapeGeometry handle winding internally
+  // Negate y because rotateX(-PI/2) maps (x,y,0)→(x,0,-y)
   const roofShape = new THREE.Shape();
-  roofShape.moveTo(points2D[0].x, points2D[0].y);
+  roofShape.moveTo(points2D[0].x, -points2D[0].y);
   for (let i = 1; i < points2D.length; i++) {
-    roofShape.lineTo(points2D[i].x, points2D[i].y);
+    roofShape.lineTo(points2D[i].x, -points2D[i].y);
   }
   roofShape.closePath();
   const roofGeo = new THREE.ShapeGeometry(roofShape);
@@ -131,8 +132,14 @@ function _createBuilding(polygon, tags, baseY) {
   roofGeo.computeVertexNormals();
   buckets[wallMatName].push(roofGeo);
 
-  // Floor cap
-  const floorGeo = new THREE.ShapeGeometry(roofShape);
+  // Floor cap — let ShapeGeometry handle winding internally
+  const floorShape = new THREE.Shape();
+  floorShape.moveTo(points2D[0].x, points2D[0].y);
+  for (let i = 1; i < points2D.length; i++) {
+    floorShape.lineTo(points2D[i].x, points2D[i].y);
+  }
+  floorShape.closePath();
+  const floorGeo = new THREE.ShapeGeometry(floorShape);
   floorGeo.rotateX(Math.PI / 2);
   floorGeo.translate(0, baseY + 0.01, 0);
   floorGeo.computeVertexNormals();
@@ -183,6 +190,36 @@ function _createBuilding(polygon, tags, baseY) {
     group.add(mesh);
   }
 
+  // Extract floorplan for ground floor (for QA debug view)
+  const floorplan = getFloorplan(rotBbox, area, tags);
+  // Rotate room coords back to world orientation if building was rotated
+  if (Math.abs(buildingAngle) > 0.01) {
+    const cosB = Math.cos(buildingAngle), sinB = Math.sin(buildingAngle);
+    for (const room of floorplan) {
+      // Rotate all 4 corners and take new bbox
+      const corners = [
+        { x: room.x, z: room.z },
+        { x: room.x + room.w, z: room.z },
+        { x: room.x + room.w, z: room.z + room.d },
+        { x: room.x, z: room.z + room.d },
+      ];
+      const rotated = corners.map(c => ({
+        x: cx + (c.x - cx) * cosB - (c.z - cy) * sinB,
+        z: cy + (c.x - cx) * sinB + (c.z - cy) * cosB,
+      }));
+      room.worldCorners = rotated;
+    }
+  } else {
+    for (const room of floorplan) {
+      room.worldCorners = [
+        { x: room.x, z: room.z },
+        { x: room.x + room.w, z: room.z },
+        { x: room.x + room.w, z: room.z + room.d },
+        { x: room.x, z: room.z + room.d },
+      ];
+    }
+  }
+
   return {
     group,
     center: { x: center.x, z: center.y },
@@ -191,6 +228,8 @@ function _createBuilding(polygon, tags, baseY) {
     numFloors,
     area,
     buildingType,
+    floorplan,
+    polygon: points2D.map(p => ({ x: p.x, y: p.y })),
   };
 }
 
@@ -336,12 +375,16 @@ function addWallQuad(p0, p1, y, height, nx, nz, matName, buckets) {
 
 // ── Geometry utilities ──
 
-function computeArea2D(points) {
+function computeSignedArea2D(points) {
   let area = 0;
   for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
     area += (points[j].x + points[i].x) * (points[j].y - points[i].y);
   }
-  return Math.abs(area / 2);
+  return area / 2;
+}
+
+function computeArea2D(points) {
+  return Math.abs(computeSignedArea2D(points));
 }
 
 function getCenter(points) {
@@ -367,18 +410,23 @@ function getInscribedBBox(points) {
   // If polygon nearly fills its bbox (axis-aligned rectangle), no shrinking needed
   const bboxArea = (full.maxX - full.minX) * (full.maxY - full.minY);
   const polyArea = computeArea2D(points);
-  if (bboxArea < 1 || polyArea > bboxArea * 0.9) return full;
+  if (bboxArea < 1 || polyArea > bboxArea * 0.95) return full;
 
   let { minX, maxX, minY, maxY } = { ...full };
-  const eps = 0.1;
-  const step = 0.25;
-  for (let iter = 0; iter < 80; iter++) {
-    const corners = [
+  const eps = 0.15;
+  const step = 0.2;
+  for (let iter = 0; iter < 120; iter++) {
+    // Check corners AND edge midpoints for better coverage of irregular shapes
+    const testPts = [
+      // Corners
       { x: minX + eps, y: minY + eps }, { x: maxX - eps, y: minY + eps },
       { x: maxX - eps, y: maxY - eps }, { x: minX + eps, y: maxY - eps },
+      // Edge midpoints
+      { x: (minX + maxX) / 2, y: minY + eps }, { x: (minX + maxX) / 2, y: maxY - eps },
+      { x: minX + eps, y: (minY + maxY) / 2 }, { x: maxX - eps, y: (minY + maxY) / 2 },
     ];
     let allInside = true;
-    for (const c of corners) {
+    for (const c of testPts) {
       if (!pointInPolygon2D(c.x, c.y, points)) {
         allInside = false;
         const cx = (minX + maxX) / 2;
@@ -393,7 +441,10 @@ function getInscribedBBox(points) {
     if (allInside) break;
   }
 
-  if (maxX <= minX + 1 || maxY <= minY + 1) return full;
+  // Safety margin to keep furniture inside walls
+  minX += 0.5; maxX -= 0.5; minY += 0.5; maxY -= 0.5;
+
+  if (maxX <= minX + 0.5 || maxY <= minY + 0.5) return full;
 
   return { minX, maxX, minY, maxY };
 }
@@ -429,6 +480,20 @@ function rotateGeometryAroundPoint(geometry, cx, cz, angle) {
   }
   positions.needsUpdate = true;
   if (normals) normals.needsUpdate = true;
+}
+
+function findFrontEdge(points2D) {
+  // Pick the edge whose midpoint has the largest Z (faces +Z = front camera)
+  // Among edges long enough to hold a door, prefer the one most "forward"
+  let bestEdge = 0, bestZ = -Infinity;
+  for (let i = 0; i < points2D.length; i++) {
+    const j = (i + 1) % points2D.length;
+    const len = points2D[i].distanceTo(points2D[j]);
+    if (len < 1.5) continue; // too short for a door
+    const midZ = (points2D[i].y + points2D[j].y) / 2;
+    if (midZ > bestZ) { bestZ = midZ; bestEdge = i; }
+  }
+  return bestEdge;
 }
 
 function findLongestEdge(points2D) {

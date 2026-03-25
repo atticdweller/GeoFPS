@@ -205,15 +205,39 @@ function loadCustomBuilding(polygon, tags) {
   return currentResult;
 }
 
+// ── Floorplan capture (top-down interior shot with roof clipped) ──
+
+function captureFloorplan() {
+  if (!currentResult) return null;
+  const { center, bbox, height } = currentResult;
+  const cx = center.x;
+  const cz = center.z;
+  const w = bbox.maxX - bbox.minX;
+  const d = bbox.maxY - bbox.minY;
+  const pad = 1;
+  const halfW = (w / 2) + pad;
+  const halfD = (d / 2) + pad;
+
+  // Orthographic camera looking straight down, just below the roof
+  const ortho = new THREE.OrthographicCamera(-halfW, halfW, halfD, -halfD, 0.1, height + 5);
+  ortho.position.set(cx, height - 0.05, cz);
+  ortho.lookAt(cx, 0, cz);
+  ortho.updateProjectionMatrix();
+
+  renderer.render(scene, ortho);
+  return renderer.domElement.toDataURL('image/png');
+}
+
 window.__testAPI = {
   getConfigs: () => configs.map(c => c.name),
-  getCameraViews: () => ['front', 'right', 'back', 'left', 'aerial', 'top', 'interior'],
+  getCameraViews: () => ['front', 'right', 'back', 'left', 'aerial', 'top', 'interior', 'floorplan'],
   loadBuilding: (index) => loadBuilding(index),
   loadBuildingByName: (name) => loadBuildingByName(name),
   loadCustomBuilding: (polygon, tags) => loadCustomBuilding(polygon, tags),
   setCameraView: (view) => setCameraView(view),
   setCameraCustom: (px, py, pz, tx, ty, tz) => setCameraCustom(px, py, pz, tx, ty, tz),
   capture: () => capture(),
+  captureFloorplan: () => captureFloorplan(),
   render: () => renderer.render(scene, camera),
   getBuildingInfo: () => getBuildingInfo(),
 };

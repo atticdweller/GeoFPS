@@ -27,13 +27,11 @@ async function main() {
 
   // Launch browser
   const browser = await puppeteer.launch({
-    headless: 'new',
+    headless: false,
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--enable-webgl',
-      '--use-gl=angle',
-      '--use-angle=swiftshader-webgl',
     ],
     defaultViewport: { width: 1280, height: 720 },
   });

@@ -14,7 +14,7 @@ export function generateInterior(bbox, buildingArea, floorHeight, floorY, floorI
   const width = bbox.maxX - bbox.minX;
   const depth = bbox.maxY - bbox.minY;
 
-  if (width < 3 || depth < 3) return;
+  if (width < 2 || depth < 2) return;
 
   const buildingType = classifyBuildingType(tags);
 
@@ -314,7 +314,7 @@ function bspSubdivide(rect, depth = 0, minArea = MIN_ROOM_AREA, maxArea = MAX_RO
   const splitRatio = 0.4 + Math.random() * 0.2;
   const splitPos = dim * splitRatio;
 
-  if (splitPos < 2.5 || (dim - splitPos) < 2.5) return [rect];
+  if (splitPos < 1.8 || (dim - splitPos) < 1.8) return [rect];
 
   let r1, r2;
   if (splitH) {
@@ -484,7 +484,7 @@ function addBox(w, h, d, x, y, z, matName, buckets) {
 
 function placeKitchen(room, y, b) {
   addBox(room.w - 0.4, 0.9, 0.6, room.x + room.w / 2, y, room.z + 0.5, 'counter', b);
-  if (room.w > 3 && room.d > 3)
+  if (room.w > 2 && room.d > 2)
     addBox(1.2, 0.75, 0.8, room.x + room.w / 2, y, room.z + room.d / 2, 'wood', b);
 }
 
@@ -493,9 +493,9 @@ function placeBedroom(room, y, b) {
   const bedD = Math.min(2.2, room.d - 0.6);
   const matName = Math.random() > 0.5 ? 'bedRed' : 'bedBlue';
   addBox(bedW, 0.5, bedD, room.x + room.w / 2, y, room.z + bedD / 2 + 0.3, matName, b);
-  if (room.w > 3)
+  if (room.w > 2)
     addBox(0.4, 0.5, 0.4, room.x + room.w / 2 + bedW / 2 + 0.3, y, room.z + 0.5, 'wood', b);
-  if (room.d > 3)
+  if (room.d > 2)
     addBox(1.0, 0.8, 0.45, room.x + room.w - 0.7, y, room.z + room.d - 0.5, 'wood', b);
 }
 
@@ -503,7 +503,7 @@ function placeLivingRoom(room, y, b) {
   const couchW = Math.min(2.2, room.w - 0.6);
   addBox(couchW, 0.6, 0.8, room.x + room.w / 2, y, room.z + room.d - 0.7, 'fabric', b);
   addBox(1.0, 0.4, 0.5, room.x + room.w / 2, y, room.z + room.d / 2, 'wood', b);
-  if (room.w > 4)
+  if (room.w > 2.5)
     addBox(0.8, 0.6, 0.8, room.x + 0.7, y, room.z + room.d / 2, 'fabric', b);
 }
 
@@ -523,6 +523,76 @@ function placeDining(room, y, b) {
 function placeStudy(room, y, b) {
   addBox(1.4, 0.75, 0.6, room.x + room.w / 2, y, room.z + 0.5, 'wood', b);
   addBox(0.5, 0.8, 0.5, room.x + room.w / 2, y, room.z + 1.2, 'fabric', b);
-  if (room.w > 3)
+  if (room.w > 2)
     addBox(0.4, 1.8, 1.0, room.x + room.w - 0.4, y, room.z + room.d / 2, 'wood', b);
+}
+
+// ---- Floorplan extraction (for QA/debug) ----
+
+/**
+ * Returns room layout data for a single floor without generating geometry.
+ * @returns {Array<{x, z, w, d, type}>} rooms in local coords
+ */
+export function getFloorplan(bbox, buildingArea, tags) {
+  const width = bbox.maxX - bbox.minX;
+  const depth = bbox.maxY - bbox.minY;
+  if (width < 2 || depth < 2) return [];
+
+  const buildingType = classifyBuildingType(tags);
+
+  switch (buildingType) {
+    case 'grocery': return getGroceryFloorplan(bbox);
+    case 'restaurant': return getRestaurantFloorplan(bbox);
+    case 'retail': return getRetailFloorplan(bbox);
+    case 'office': return getOfficeFloorplan(bbox, buildingArea);
+    default: return getResidentialFloorplan(bbox, buildingArea, tags);
+  }
+}
+
+function getResidentialFloorplan(bbox, buildingArea, tags) {
+  const width = bbox.maxX - bbox.minX;
+  const depth = bbox.maxY - bbox.minY;
+  const rooms = bspSubdivide({ x: bbox.minX, z: bbox.minY, w: width, d: depth });
+  classifyRooms(rooms, buildingArea, tags);
+  return rooms;
+}
+
+function getOfficeFloorplan(bbox, buildingArea) {
+  const width = bbox.maxX - bbox.minX;
+  const depth = bbox.maxY - bbox.minY;
+  const rooms = bspSubdivide({ x: bbox.minX, z: bbox.minY, w: width, d: depth }, 0, 50, 15);
+  const sorted = [...rooms].sort((a, b) => (b.w * b.d) - (a.w * a.d));
+  const officeTypes = ['open_office', 'conference', 'reception'];
+  for (let i = 0; i < sorted.length; i++) {
+    sorted[i].type = i < officeTypes.length ? officeTypes[i] : (i % 2 === 0 ? 'open_office' : 'private_office');
+  }
+  return rooms;
+}
+
+function getGroceryFloorplan(bbox) {
+  const w = bbox.maxX - bbox.minX;
+  const d = bbox.maxY - bbox.minY;
+  return [
+    { x: bbox.minX, z: bbox.minY, w, d: d * 0.15, type: 'checkout' },
+    { x: bbox.minX, z: bbox.minY + d * 0.15, w, d: d * 0.7, type: 'aisles' },
+    { x: bbox.minX, z: bbox.minY + d * 0.85, w, d: d * 0.15, type: 'coolers' },
+  ];
+}
+
+function getRestaurantFloorplan(bbox) {
+  const w = bbox.maxX - bbox.minX;
+  const d = bbox.maxY - bbox.minY;
+  return [
+    { x: bbox.minX, z: bbox.minY, w, d: d * 0.7, type: 'dining' },
+    { x: bbox.minX, z: bbox.minY + d * 0.7, w, d: d * 0.3, type: 'kitchen' },
+  ];
+}
+
+function getRetailFloorplan(bbox) {
+  const w = bbox.maxX - bbox.minX;
+  const d = bbox.maxY - bbox.minY;
+  return [
+    { x: bbox.minX, z: bbox.minY, w, d: d * 0.8, type: 'showroom' },
+    { x: bbox.minX, z: bbox.minY + d * 0.8, w, d: d * 0.2, type: 'storage' },
+  ];
 }

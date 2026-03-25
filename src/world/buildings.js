@@ -195,14 +195,12 @@ function createBuilding(world, bld, roadSegments, elevData, sizeMeters, buckets)
 
   }
 
-  // Roof (flat top cap) — ensure correct winding for ShapeGeometry
+  // Roof (flat top cap) — let ShapeGeometry handle winding internally
   const roofShape = new THREE.Shape();
-  // Three.js Shape expects counter-clockwise winding; check and reverse if needed
-  const signedArea = computeSignedArea2D(points2D);
-  const orderedPts = signedArea < 0 ? [...points2D].reverse() : points2D;
-  roofShape.moveTo(orderedPts[0].x, orderedPts[0].y);
-  for (let i = 1; i < orderedPts.length; i++) {
-    roofShape.lineTo(orderedPts[i].x, orderedPts[i].y);
+  // Shape y-axis becomes -z after rotateX(-PI/2), so negate z to compensate
+  roofShape.moveTo(points2D[0].x, -points2D[0].y);
+  for (let i = 1; i < points2D.length; i++) {
+    roofShape.lineTo(points2D[i].x, -points2D[i].y);
   }
   roofShape.closePath();
   const roofGeo = new THREE.ShapeGeometry(roofShape);
@@ -648,18 +646,21 @@ function getInscribedBBox(points) {
   // If polygon nearly fills its bbox (axis-aligned rectangle), no shrinking needed
   const bboxArea = (full.maxX - full.minX) * (full.maxY - full.minY);
   const polyArea = computeArea2D(points);
-  if (bboxArea < 1 || polyArea > bboxArea * 0.9) return full;
+  if (bboxArea < 1 || polyArea > bboxArea * 0.95) return full;
 
   let { minX, maxX, minY, maxY } = { ...full };
-  const eps = 0.1; // inset test points slightly to avoid boundary ambiguity
-  const step = 0.25;
-  for (let iter = 0; iter < 80; iter++) {
-    const corners = [
+  const eps = 0.15;
+  const step = 0.2;
+  for (let iter = 0; iter < 120; iter++) {
+    // Check corners AND edge midpoints for better coverage of irregular shapes
+    const testPts = [
       { x: minX + eps, y: minY + eps }, { x: maxX - eps, y: minY + eps },
       { x: maxX - eps, y: maxY - eps }, { x: minX + eps, y: maxY - eps },
+      { x: (minX + maxX) / 2, y: minY + eps }, { x: (minX + maxX) / 2, y: maxY - eps },
+      { x: minX + eps, y: (minY + maxY) / 2 }, { x: maxX - eps, y: (minY + maxY) / 2 },
     ];
     let allInside = true;
-    for (const c of corners) {
+    for (const c of testPts) {
       if (!pointInPolygon2D(c.x, c.y, points)) {
         allInside = false;
         const cx = (minX + maxX) / 2;
@@ -674,8 +675,11 @@ function getInscribedBBox(points) {
     if (allInside) break;
   }
 
+  // Safety margin to keep furniture inside walls
+  minX += 0.5; maxX -= 0.5; minY += 0.5; maxY -= 0.5;
+
   // If bbox collapsed, fall back to full
-  if (maxX <= minX + 1 || maxY <= minY + 1) return full;
+  if (maxX <= minX + 0.5 || maxY <= minY + 0.5) return full;
 
   return { minX, maxX, minY, maxY };
 }

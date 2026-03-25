@@ -7,7 +7,12 @@
     "build": "vite build",
     "preview": "vite preview",
     "test:buildings": "node test/capture.mjs",
-    "test:snapshot": "node test/snapshot.mjs"
+    "test:snapshot": "node test/snapshot.mjs",
+    "test:report": "node test/report.mjs",
+    "test:brooklyn": "node test/capture-brooklyn.mjs",
+    "test:brooklyn-report": "node test/report.mjs --dir brooklyn",
+    "test:feedback": "node test/feedback-agent.mjs",
+    "test:feedback-report": "node test/feedback-report.mjs"
   },
   "keywords": [],
   "author": "",
