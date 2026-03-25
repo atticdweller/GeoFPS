@@ -12,7 +12,10 @@
     "test:brooklyn": "node test/capture-brooklyn.mjs",
     "test:brooklyn-report": "node test/report.mjs --dir brooklyn",
     "test:feedback": "node test/feedback-agent.mjs",
-    "test:feedback-report": "node test/feedback-report.mjs"
+    "test:feedback-report": "node test/feedback-report.mjs",
+    "test:streetview": "node test/capture-streetview.mjs",
+    "test:streetview-report": "node test/streetview-report.mjs",
+    "test:streetview-feedback": "node test/feedback-streetview.mjs"
   },
   "keywords": [],
   "author": "",
