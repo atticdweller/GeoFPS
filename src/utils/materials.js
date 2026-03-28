@@ -27,11 +27,11 @@ export const materials = {
   bedBlue: new THREE.MeshLambertMaterial({ color: 0x335599 }),
 
   // Roads
-  asphalt: new THREE.MeshLambertMaterial({ color: 0x333333 }),
-  sidewalk: new THREE.MeshLambertMaterial({ color: 0xaaaaaa }),
-  curb: new THREE.MeshLambertMaterial({ color: 0x999999 }),
-  laneMarkingWhite: new THREE.MeshLambertMaterial({ color: 0xeeeeee }),
-  laneMarkingYellow: new THREE.MeshLambertMaterial({ color: 0xdddd44 }),
+  asphalt: new THREE.MeshLambertMaterial({ color: 0x333333, side: THREE.DoubleSide }),
+  sidewalk: new THREE.MeshLambertMaterial({ color: 0xaaaaaa, side: THREE.DoubleSide }),
+  curb: new THREE.MeshLambertMaterial({ color: 0x999999, side: THREE.DoubleSide }),
+  laneMarkingWhite: new THREE.MeshLambertMaterial({ color: 0xeeeeee, side: THREE.DoubleSide }),
+  laneMarkingYellow: new THREE.MeshLambertMaterial({ color: 0xdddd44, side: THREE.DoubleSide }),
 
   // Building extras
   door: new THREE.MeshLambertMaterial({ color: 0x6b4226 }),
