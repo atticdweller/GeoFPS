@@ -220,7 +220,8 @@ function generateDashedLine(p0, p1, n0, n1, halfW, segLen, buckets, matName) {
 }
 
 function addIntersectionPatch(cx, cz, radius, buckets) {
-  // Simple octagon patch
+  // Simple octagon patch (slightly above road surface to prevent z-fighting)
+  const PATCH_Y = ROAD_Y + 0.005;
   const segments = 8;
   for (let i = 0; i < segments; i++) {
     const a0 = (i / segments) * Math.PI * 2;
@@ -228,9 +229,9 @@ function addIntersectionPatch(cx, cz, radius, buckets) {
 
     const geo = new THREE.BufferGeometry();
     const positions = new Float32Array([
-      cx, ROAD_Y, cz,
-      cx + Math.cos(a0) * radius, ROAD_Y, cz + Math.sin(a0) * radius,
-      cx + Math.cos(a1) * radius, ROAD_Y, cz + Math.sin(a1) * radius,
+      cx, PATCH_Y, cz,
+      cx + Math.cos(a0) * radius, PATCH_Y, cz + Math.sin(a0) * radius,
+      cx + Math.cos(a1) * radius, PATCH_Y, cz + Math.sin(a1) * radius,
     ]);
     const normals = new Float32Array([0, 1, 0, 0, 1, 0, 0, 1, 0]);
     const indices = new Uint16Array([0, 1, 2]);
@@ -292,12 +293,12 @@ function addQuad(x0, y0, z0, x1, y1, z1, x2, y2, z2, x3, y3, z3, buckets, matNam
     x0, y0, z0, x1, y1, z1, x2, y2, z2, x3, y3, z3,
   ]);
 
-  // Compute face normal from first triangle
+  // Compute face normal from first triangle (negated to fix winding direction)
   const ax = x1 - x0, ay = y1 - y0, az = z1 - z0;
   const bx = x2 - x0, by = y2 - y0, bz = z2 - z0;
-  let nx = ay * bz - az * by;
-  let ny = az * bx - ax * bz;
-  let nz = ax * by - ay * bx;
+  let nx = -(ay * bz - az * by);
+  let ny = -(az * bx - ax * bz);
+  let nz = -(ax * by - ay * bx);
   const nLen = Math.hypot(nx, ny, nz);
   if (nLen > 0) { nx /= nLen; ny /= nLen; nz /= nLen; }
   else { nx = 0; ny = 1; nz = 0; }
@@ -305,7 +306,7 @@ function addQuad(x0, y0, z0, x1, y1, z1, x2, y2, z2, x3, y3, z3, buckets, matNam
   const normals = new Float32Array([
     nx, ny, nz, nx, ny, nz, nx, ny, nz, nx, ny, nz,
   ]);
-  const indices = new Uint16Array([0, 1, 2, 0, 2, 3]);
+  const indices = new Uint16Array([2, 1, 0, 3, 2, 0]);
 
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
