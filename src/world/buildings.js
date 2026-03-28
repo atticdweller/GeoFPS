@@ -317,7 +317,7 @@ function generateWallWithDoor(p0, p1, floorY, floorHeight, doorInfo, nx, nz, mat
 
   const doorGeo = new THREE.PlaneGeometry(DOOR_WIDTH, DOOR_HEIGHT);
   const angle = Math.atan2(p1.y - p0.y, p1.x - p0.x);
-  doorGeo.rotateY(-angle + Math.PI / 2);
+  doorGeo.rotateY(-angle);
   doorGeo.translate(
     doorCx - nx * inset,
     floorY + DOOR_HEIGHT / 2,
@@ -328,6 +328,7 @@ function generateWallWithDoor(p0, p1, floorY, floorHeight, doorInfo, nx, nz, mat
 
   // Door step
   const stepGeo = new THREE.BoxGeometry(DOOR_WIDTH + 0.2, 0.1, 0.5);
+  stepGeo.rotateY(-angle);
   stepGeo.translate(
     doorCx + nx * 0.25,
     floorY + 0.05,
@@ -402,7 +403,7 @@ function generateWallWithWindows(p0, p1, floorY, floorHeight, nx, nz, matName, i
     const angle = Math.atan2(p1.y - p0.y, p1.x - p0.x);
 
     const glassGeo = new THREE.PlaneGeometry(winW, winH);
-    glassGeo.rotateY(-angle + Math.PI / 2);
+    glassGeo.rotateY(-angle);
     glassGeo.translate(wx, wy, wz);
     glassGeo.computeVertexNormals();
     buckets.glass.push(glassGeo);
