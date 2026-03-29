@@ -2,8 +2,14 @@
  * Fetch building footprints and road data from OpenStreetMap via Overpass API.
  */
 
+const OVERPASS_ENDPOINTS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+];
+
 /**
  * Fetch both buildings and roads in a single Overpass query.
+ * Retries each endpoint up to 2 times before trying the next.
  * @returns {{ buildings: Array, roads: Array }}
  */
 export async function fetchOSMData(bbox) {
@@ -18,16 +24,30 @@ export async function fetchOSMData(bbox) {
     out body;>;out skel qt;
   `;
 
-  const url = 'https://overpass-api.de/api/interpreter';
-  const res = await fetch(url, {
-    method: 'POST',
-    body: `data=${encodeURIComponent(query)}`,
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-  });
+  const body = `data=${encodeURIComponent(query)}`;
+  const headers = { 'Content-Type': 'application/x-www-form-urlencoded' };
 
-  if (!res.ok) throw new Error(`Overpass API error: ${res.status}`);
-  const data = await res.json();
+  let lastError;
+  for (const url of OVERPASS_ENDPOINTS) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        if (attempt > 0) await new Promise(r => setTimeout(r, 2000));
+        const res = await fetch(url, { method: 'POST', body, headers });
+        if (res.ok) {
+          const data = await res.json();
+          return parseOSMResponse(data);
+        }
+        lastError = new Error(`Overpass API error: ${res.status} from ${url}`);
+      } catch (e) {
+        lastError = e;
+      }
+    }
+  }
 
+  throw lastError;
+}
+
+function parseOSMResponse(data) {
   // Build node lookup: id → {lat, lng}
   const nodes = {};
   for (const el of data.elements) {

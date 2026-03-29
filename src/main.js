@@ -47,24 +47,26 @@ async function main() {
   // 4. Fetch data
   showLoading('Fetching map data...', 10);
 
-  let buildingData, roadData, elevData;
-  try {
-    const [osmResult, elevResult] = await Promise.all([
-      fetchOSMData(bbox),
-      (showLoading('Fetching elevation data...', 20), fetchElevation(bbox, 32)),
-    ]);
-    buildingData = osmResult.buildings;
-    roadData = osmResult.roads;
-    elevData = elevResult;
-  } catch (e) {
-    console.error('Data fetch error:', e);
-    buildingData = [];
-    roadData = [];
-    elevData = {
-      grid: Array.from({ length: 32 }, () => new Float32Array(32)),
-      width: 32, height: 32, minElev: 0, maxElev: 0,
-    };
-  }
+  const defaultElev = {
+    grid: Array.from({ length: 32 }, () => new Float32Array(32)),
+    width: 32, height: 32, minElev: 0, maxElev: 0,
+  };
+
+  const [osmResult, elevResult] = await Promise.all([
+    fetchOSMData(bbox).catch(e => {
+      console.error('OSM fetch failed:', e);
+      return { buildings: [], roads: [] };
+    }),
+    (showLoading('Fetching elevation data...', 20),
+      fetchElevation(bbox, 32).catch(e => {
+        console.error('Elevation fetch failed:', e);
+        return defaultElev;
+      })),
+  ]);
+
+  const buildingData = osmResult.buildings;
+  const roadData = osmResult.roads;
+  const elevData = elevResult;
 
   showLoading('Generating terrain...', 40);
   await tick();
