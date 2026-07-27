@@ -56,20 +56,8 @@ async function init() {
   };
 
   // Generate full scene
-  // Ground plane well below street level — streets render at Y=0.02+
-  const groundGeo = new THREE.PlaneGeometry(sizeMeters.width * 2, sizeMeters.height * 2);
-  groundGeo.rotateX(-Math.PI / 2);
-  const groundMat = new THREE.MeshLambertMaterial({ color: 0x3a6a30 });
-  const terrainMesh = new THREE.Mesh(groundGeo, groundMat);
-  terrainMesh.position.y = -0.01;
-  terrainMesh.receiveShadow = true;
-  scene.add(terrainMesh);
-
-  // Also make sure the production initScene terrain (if any) doesn't interfere
-  // Remove the production terrain that initScene may have added
-  const existingTerrain = scene.children.find(c => c.geometry && c.geometry.parameters &&
-    c.geometry.parameters.width === sizeMeters.width);
-  // (won't find one since we don't call createTerrain)
+  // No ground plane — streets and sidewalks ARE the ground.
+  // Sky background fills gaps between roads.
 
   console.log('Generating streets...');
   const streetBuckets = {
@@ -86,9 +74,13 @@ async function init() {
     const streetGroup = scene.getObjectByName('streets');
     console.log(`Street debug: group=${!!streetGroup}, children=${streetGroup?.children.length}, buckets: asphalt=${streetBuckets.asphalt.length} sidewalk=${streetBuckets.sidewalk.length}`);
 
-    // Raise streets above ground plane to prevent z-fighting
+    // Fix streets: normals face down due to winding order, so enable double-sided rendering
     if (streetGroup) {
-      streetGroup.position.y = 0.06;
+      streetGroup.traverse(child => {
+        if (child.isMesh && child.material) {
+          child.material.side = THREE.DoubleSide;
+        }
+      });
     }
   }
 
@@ -167,16 +159,18 @@ async function init() {
 
       let camX, camZ;
       if (b.bestPt && b.bestDist < 50) {
+        // Stand ON the road, on the far side from the building
+        // bestPt is the closest point on the road to the building center
+        // Move to the opposite side of the road from the building (road width ~6m)
         const dx = b.bestPt.x - b.cx;
         const dz = b.bestPt.z - b.cz;
         const dist = Math.hypot(dx, dz) || 1;
-        // Stand past the road, far enough to frame the building
-        const extra = Math.max(3, neededDist - b.bestDist);
-        camX = b.bestPt.x + (dx / dist) * extra;
-        camZ = b.bestPt.z + (dz / dist) * extra;
+        // Stand on the far edge of the road (~6m wide road, so 3m past centerline)
+        camX = b.bestPt.x + (dx / dist) * 3;
+        camZ = b.bestPt.z + (dz / dist) * 3;
       } else {
         camX = b.cx;
-        camZ = b.cz + Math.max(15, neededDist);
+        camZ = b.cz + 15;
       }
 
       // Cap look height so the street is always visible in the bottom of frame
